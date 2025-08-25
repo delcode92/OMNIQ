@@ -1,0 +1,2 @@
+# OMNIQ
+AI models API
