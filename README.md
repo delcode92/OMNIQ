@@ -1,2 +1,2 @@
 # OMNIQ
-AI models API
+AI models API omniq
