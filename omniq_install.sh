@@ -207,12 +207,12 @@ main() {
   echo ""
   
   # Ask for confirmation
-  read -p "Do you want to continue? (y/N): " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Installation cancelled."
-    exit 0
-  fi
+  # read -p "Do you want to continue? (y/N): " -n 1 -r
+  # echo
+  # if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  #   echo "Installation cancelled."
+  #   exit 0
+  # fi
   
   # Fetch and save credentials as the first step
   local creds
