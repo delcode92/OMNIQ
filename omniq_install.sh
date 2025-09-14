@@ -9,8 +9,7 @@ echo "=== OmniQ Client Installer ==="
 
 # Configuration
 DOWNLOAD_URL="https://github.com/delcode92/OMNIQ/releases/download/omniq/omniq-client.zip"
-TEMP_DIR="/tmp/omniq_install"
-ZIP_FILE="$TEMP_DIR/omniq-client.zip"
+ASSET_NAME="omniq-client.zip"
 
 # Colors for output
 RED='\033[0;31m'
@@ -33,8 +32,6 @@ print_error() {
 
 # Fetch credentials from server
 fetch_credentials() {
-  print_warning "Fetching credentials from server..."
-  
   # Try to fetch credentials from the server
   local server_url="http://145.223.20.135:3004"
   local response
@@ -62,20 +59,15 @@ fetch_credentials() {
       
       # Validate that we got credentials
       if [ -n "$creds" ] && [ "$creds" != "null" ]; then
-        print_success "Credentials fetched successfully"
         echo "$creds"
         return 0
       else
-        print_error "Failed to extract credentials from server response"
-        echo "Response was: $response"
         return 1
       fi
     else
-      print_error "Server returned error: $response"
       return 1
     fi
   else
-    print_error "Failed to connect to server at $server_url"
     return 1
   fi
 }
@@ -141,18 +133,10 @@ check_dependencies() {
 download_client() {
   print_warning "Downloading OmniQ client..."
   
-  # Create temporary directory
-  rm -rf "$TEMP_DIR"
-  mkdir -p "$TEMP_DIR"
+  curl -L -o "$ASSET_NAME" "$DOWNLOAD_URL"
   
-  # Download the zip file
-  if ! curl -L -o "$ZIP_FILE" "$DOWNLOAD_URL"; then
-    print_error "Failed to download client. Please check your internet connection and try again."
-    exit 1
-  fi
-  
-  if [ ! -f "$ZIP_FILE" ]; then
-    print_error "Download failed - file not found"
+  if [ ! -f "$ASSET_NAME" ]; then
+    print_error "Download failed"
     exit 1
   fi
   
@@ -162,42 +146,44 @@ download_client() {
 # Extract and install
 install_client() {
   print_warning "Extracting package..."
-  cd "$TEMP_DIR"
-  if ! unzip -q "$ZIP_FILE"; then
-    print_error "Failed to extract package. The zip file may be corrupted."
-    exit 1
-  fi
-  
-  # Check if package.json exists after extraction
-  if [ ! -f "package.json" ]; then
-    print_error "package.json not found after extraction"
-    ls -la
-    exit 1
-  fi
+  unzip -q "$ASSET_NAME"
   
   print_warning "Installing OmniQ globally..."
-  # Try installing without sudo first
-  if npm install -g . --ignore-scripts ; then
-    print_success "Installation successful"
-  else
+  # Get the global npm prefix
+  local npm_prefix=$(npm config get prefix 2>/dev/null)
+  local global_modules_dir="$npm_prefix/lib/node_modules"
+  local omniq_dir="$global_modules_dir/omniq"
+  
+  # Try to create the global directory without sudo first
+  if ! mkdir -p "$global_modules_dir" 2>/dev/null; then
     # If that fails, try with sudo
-    print_warning "Installing with sudo (may require password)..."
-    if sudo npm install -g . --ignore-scripts ; then
-      print_success "Installation successful"
-    else
-      print_error "Installation failed"
-      echo "Please check your npm permissions and try again."
-      echo "You can also try: sudo npm install -g ."
-      exit 1
-    fi
+    print_warning "Creating global modules directory with sudo (may require password)..."
+    sudo mkdir -p "$global_modules_dir"
   fi
-}
-
-# Cleanup
-cleanup() {
-  print_warning "Cleaning up..."
-  cd /
-  rm -rf "$TEMP_DIR"
+  
+  # Copy the omniq files to the global modules directory
+  if ! rm -rf "$omniq_dir" 2>/dev/null || ! cp -r . "$omniq_dir" 2>/dev/null; then
+    # If that fails, try with sudo
+    sudo rm -rf "$omniq_dir"
+    sudo cp -r . "$omniq_dir"
+  fi
+  
+  # Create the symlink in the bin directory
+  local bin_dir="$npm_prefix/bin"
+  local omniq_bin="$bin_dir/omniq"
+  local omniq_entry_point="$omniq_dir/bundle/gemini.js"
+  
+  if ! rm -f "$omniq_bin" 2>/dev/null || ! ln -s "$omniq_entry_point" "$omniq_bin" 2>/dev/null || ! chmod +x "$omniq_entry_point" 2>/dev/null; then
+    # If that fails, try with sudo
+    sudo rm -f "$omniq_bin"
+    sudo ln -s "$omniq_entry_point" "$omniq_bin"
+    sudo chmod +x "$omniq_entry_point"
+  fi
+  
+  print_success "Installation successful"
+  
+  # Clean up the zip file
+  rm -f "../$ASSET_NAME"
 }
 
 # Main installation process
@@ -215,8 +201,10 @@ main() {
   # fi
   
   # Fetch and save credentials as the first step
+  print_warning "Fetching credentials from server..."
   local creds
   if creds=$(fetch_credentials); then
+    print_success "Credentials fetched successfully"
     if save_credentials "$creds"; then
       print_success "Credentials setup completed"
     else
@@ -227,9 +215,19 @@ main() {
   fi
   
   check_dependencies
+  
+  echo "Creating temporary directory..."
+  rm -rf "/tmp/omniq_temp"
+  mkdir "/tmp/omniq_temp"
+  cd "/tmp/omniq_temp"
+  
   download_client
   install_client
-  cleanup
+  
+  # Cleanup
+  print_warning "Cleaning up..."
+  cd /
+  rm -rf "/tmp/omniq_temp" "/tmp/omniq-client.zip"
   
   echo ""
   print_success "=== Installation Complete ==="
